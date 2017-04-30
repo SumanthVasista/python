@@ -14,8 +14,108 @@ class Patient:
 		self.position = None
 		self.ktag = None
 
+class color:
+   PURPLE = '\033[95m'
+   CYAN = '\033[96m'
+   DARKCYAN = '\033[36m'
+   BLUE = '\033[94m'
+   GREEN = '\033[92m'
+   YELLOW = '\033[93m'
+   RED = '\033[91m'
+   BOLD = '\033[1m'
+   UNDERLINE = '\033[4m'
+   END = '\033[0m'
+
 patient_features_create = []
 new_patient_features_create = []
+
+def qualify(a_file):
+	source_cluster(a_file)
+	print "File found. Checking Quality Metrics..."
+	m1, m2, m, c = create_calibration_line()
+	#This module qualifies a(the) base cluster.dat file that represents the model produced results for the drug
+	#Checks the 1D-PPV, 1D-NPV, 2D-alpha, oneDCS, sensitivity and judges usability of conditional-usability of the model
+	p_match = 0
+	p_list = 0
+	n_match = 0
+	n_list = 0
+	outlier = 0
+	two_d_match = 0
+	usage_signal = 1
+	r_xlist = []
+	n_xlist = []
+	warnings = []
+	conditions = []
+	for element in patient_features_create:
+	#1. Checking 1D-PPV - This is 1D
+		if element.response == 'R':
+			r_xlist.append(element.position[0]) #4. Sensitivity
+			p_list += 1
+			if element.position[0] > 0:
+				p_match += 1
+			if element.position[1] < (element.position[0]*m + c): #3. 2D-alpha
+				outlier += 1
+	#2. Checking 1D-NPV - This is 1D
+		if element.response == 'N':
+			n_xlist.append(element.position[0]) #4. Sensitivity
+			n_list += 1
+			if element.position[0] < 0:
+				n_match += 1
+			if element.position[1] > (element.position[0]*m + c): #3. 2D-alpha
+				outlier += 1
+		predicted_response = return_discreet_response(m1, m2, m, c, element.position[0], element.position[1])
+		if predicted_response == element.response:
+			two_d_match += 1
+	PPV = (p_match/p_list)*100
+	NPV = (n_match/n_list)*100
+	alpha = outlier / len(patient_features_create) * 100
+	sensitivity = float((np.mean(r_xlist) - np.mean(n_xlist))*100)
+	oneDCS = ((p_match + n_match)/(p_list + n_list)) * 100
+	twoDCS = (two_d_match/len(patient_features_create)) * 100
+	#Conditions for non-usability of model
+	if PPV < 60 or NPV < 60:
+		usage_signal = 0
+	if 55 < oneDCS < 65:
+		warnings.append(str('Low 1D-cluster score, consider re-modeling - proceed with caution'))
+	if oneDCS < 55:
+		usage_signal = 0 
+	if twoDCS < 75:
+		usage_signal = 0
+	if alpha > 15:
+		warnings.append(str('High overlap of R/N - proceed with caution'))
+	if usage_signal == 0:
+		if PPV > 70:
+			conditions.append(str('Usage for Responder probability testing'))
+		if NPV > 70:
+			conditions.append(str('Usage for Non-Responder probability testing'))
+	print "Writing report"
+	print "\n"
+	print "1-D QUALIFICATION METRICS"
+	print "1D-CLUSTERING CORREALTION: ", oneDCS, "%", " (CUT-OFF - 65%)"
+	print "1D-PPV: ", PPV, "%", " (CUT-OFF - 60%)"
+	print "1D-NPV: ", NPV, "%", " CUT-OFF - 60%)"
+	print "SENSITIVITY: ", sensitivity, "(CUT-OFF - ~)"
+	print "\n"
+	print " 2-D QUALIICATION METRICS"
+	print "2D-CLUSTERING CORREALTION", twoDCS, "%", " (CUT-OFF - 75%)"
+	print "alpha (p-value): ", alpha, "%", " (CUT-OFF - 15%)"
+	print "\n"
+	if usage_signal == 1 and len(warnings) == 0:
+		print "USAGE_SIGNAL: " + color.GREEN + color.BOLD + "GREEN" + color.END
+	elif usage_signal == 1 and len(warnings) > 0:
+		print "USAGE_SIGNAL: " + color.YELLOW + color.BOLD + "YELLOW" + color.END
+	else:
+		print "USAGE_SIGNAL: " + color.RED + color.BOLD + "RED" + color.END
+	if usage_signal == 0:
+		print "CONDITIONAL_USAGE:"
+		print "\n"
+		for message in conditions:
+			print message
+	print "OTHER WARNINGS:"
+	for message in warnings:
+		print message
+	print "\n"
+	print "~~END~~"	
 
 def source_cluster(a_file):
 		patientlist = [patientlist.rsplit(' ')[0] for patientlist in open(a_file)]
@@ -28,7 +128,6 @@ def source_cluster(a_file):
 		except:
 			print "non labelled data detected. Please enter labelled data to create features-separator"
 			exit(-1)
-		print "Finished sourcing data"
 		for i in range(len(patientlist)):
 			name = str(patientlist[i])
 			patientlist[i] = Patient()
@@ -111,44 +210,58 @@ def create_calibration_line():
 	m = (m1+m2)/2
 	return m1, m2, m, c
 
+def export_co_efficients():
+	if os.path.isfile(cwl+'/cluster.dat') == True:
+		source_cluster(cwl+'/cluster.dat')
+		m1, m2, m, c = create_calibration_line()
+		print m1, m2, m, c
+
+def return_discreet_response(m1, m2, m, c, patient_x, patient_y):
+	if float(patient_y) > float(m*patient_x) + c:
+		n_response = 'R'
+	elif float(patient_y) < float(m*patient_x) + c:
+		n_response = 'N'
+	else:
+		n_response = 'A'
+	return n_response
+
+def export_reports(a_file):
+	if os.path.isfile(cwl+'/cluster.dat') == True:
+		source_cluster(cwl+'/cluster.dat')
+		m1, m2, m, c = create_calibration_line()
+		print m1, m2, m, c
+		print "Writing reports..."
+		source_newdata(a_file)
+		#Writing reports
+		target = open(cwl+'/report.csv','w')
+		str0 = str('PatientID,Relative_Efficacy,Predicted_Response')
+		target.write(str0)
+		target.write('\n')
+		for element in new_patient_features_create:
+			dist = (abs(element.position[0]*m + element.position[1]*-1 + c)/(mt.sqrt(m*m + 1)))
+			if element.position[1] > m*element.position[0] + c:
+				n_response = 'R'
+			elif element.position[1] < m*element.position[0] + c:
+				n_response = 'N'
+			else:
+				n_response = 'A'
+			if n_response == 'R':
+				beta = 1
+			elif n_response == 'N':
+				beta = -1
+			relative_efficacy = (beta*mt.tanh(dist)*100) + 30
+			string = str(str(element.id)+','+str(relative_efficacy)+','+str(n_response))
+			target.write(string)
+			target.write('\n')
+		target.close()
+		print "Finished printing report"
+
+
 if __name__=="__main__":
 	script, mode, newpath = sys.argv
 	if sys.argv[1] == 'viz':
-		if os.path.isfile(cwl+'/cluster.dat') == True:
-			source_cluster(cwl+'/cluster.dat')
-			m1, m2, m, c = create_calibration_line()
-			print m1, m2, m, c
-	elif sys.argv[1] == 'report':
-		if os.path.isfile(cwl+'/cluster.dat') == True:
-			source_cluster(cwl+'/cluster.dat')
-			m1, m2, m, c = create_calibration_line()
-			print m1, m2, m, c
-			print "Writing reports..."
-			new_file = sys.argv[2]
-			source_newdata(new_file)
-			#Writing reports
-			target = open(cwl+'/report.csv','w')
-			str0 = str('PatientID,Relative_Efficacy,Predicted_Response')
-			target.write(str0)
-			target.write('\n')
-			for element in new_patient_features_create:
-				dist = (abs(element.position[0]*m + element.position[1]*-1 + c)/(mt.sqrt(m*m + 1)))
-				if element.position[1] > m*element.position[0] + c:
-					n_response = 'R'
-				elif element.position[1] < m*element.position[0] + c:
-					n_response = 'N'
-				else:
-					n_response = 'A'
-				if n_response == 'R':
-					beta = 1
-				elif n_response == 'N':
-					beta = -1
-				relative_efficacy = (beta*mt.tanh(dist)*100) + 30
-				string = str(str(element.id)+','+str(relative_efficacy)+','+str(n_response))
-				target.write(string)
-				target.write('\n')
-			target.close()
-			print "Finished printing report"
+		export_co_efficients()
+
+	if sys.argv[1] == 'report':
+		export_reports(sys.argv[2])
 				
-			
-		
