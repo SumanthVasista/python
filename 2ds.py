@@ -69,7 +69,9 @@ def qualify(a_file):
 	PPV = (p_match/p_list)*100
 	NPV = (n_match/n_list)*100
 	alpha = outlier / len(patient_features_create) * 100
+	spread = float(np.std(r_xlist) + np.std(n_xlist)*0.5*100)
 	sensitivity = float((np.mean(r_xlist) - np.mean(n_xlist))*100)
+	s_by_p = sensitivity / spread
 	oneDCS = ((p_match + n_match)/(p_list + n_list)) * 100
 	twoDCS = (two_d_match/len(patient_features_create)) * 100
 	#Conditions for non-usability of model
@@ -94,7 +96,9 @@ def qualify(a_file):
 	print "1D-CLUSTERING CORREALTION: ", oneDCS, "%", " (CUT-OFF - 65%)"
 	print "1D-PPV: ", PPV, "%", " (CUT-OFF - 60%)"
 	print "1D-NPV: ", NPV, "%", " CUT-OFF - 60%)"
-	print "SENSITIVITY: ", sensitivity, "(CUT-OFF - ~)"
+	print "SENSITIVITY: ", sensitivity, " (CUT-OFF - ~)"
+	print "SPREAD: ", spread, " (CUT-OFF - ~)"
+	print "s/p RATIO: ", s_by_p, " (CUT-OFF - ~)"
 	print "\n"
 	print " 2-D QUALIICATION METRICS"
 	print "2D-CLUSTERING CORREALTION", twoDCS, "%", " (CUT-OFF - 75%)"
